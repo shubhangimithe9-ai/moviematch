@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MovieMatch | Results & Search</title>
+    <!-- Direct local file path fallback & Flask static route -->
+    <link rel="stylesheet" href="../static/style.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+            --bg-main: #f1f5f9;
+            --bg-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --border-color: #cbd5e1;
+            --accent-bg: #e0e7ff;
+            --accent-text: #3730a3;
+        }
+        body.dark {
+            --primary: #6366f1;
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            --bg-main: #0b0f19;
+            --bg-card: #131b2e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #24304f;
+            --accent-bg: rgba(99, 102, 241, 0.2);
+            --accent-text: #c7d2fe;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NAVBAR WITH INSTANT SEARCH BAR -->
+    <nav class="navbar">
+        <div class="logo" onclick="window.location.href='/'">
+            <span class="logo-icon">🎬</span> MovieMatch
+        </div>
+
+        <!-- TOP LIVE SEARCH BAR -->
+        <div class="search-wrapper" style="width: 320px; max-width: 45vw;">
+            <div class="search-input-group">
+                <span class="search-icon">🔍</span>
+                <input 
+                    type="text" 
+                    id="topNavSearchInput" 
+                    class="search-input" 
+                    placeholder="Search movie title..."
+                    value="{{ query }}"
+                    autocomplete="off"
+                    style="padding-top: 8px; padding-bottom: 8px; font-size: 13px;"
+                >
+            </div>
+        </div>
+
+        <div class="nav-controls">
+            <a href="/" class="nav-btn">
+                <span>←</span> Back to Search
+            </a>
+
+            <button class="nav-btn" onclick="openWatchlistModal()">
+                <span>🔖</span> Watchlist 
+                <span class="watchlist-count-badge" id="watchlistCount">0</span>
+            </button>
+
+            <button class="nav-btn" id="themeButton" onclick="toggleTheme()" aria-label="Toggle Theme">
+                🌙 Theme
+            </button>
+        </div>
+    </nav>
+
+    <!-- HEADER TITLE -->
+    <header class="hero" style="padding-top: 30px; padding-bottom: 20px;">
+        {% if query %}
+        <h1 id="pageHeading">Search Results for <span>"{{ query }}"</span></h1>
+        <p id="pageSubheading">Showing movies matching your search query.</p>
+        {% else %}
+        <h1 id="pageHeading">Your <span>Movie Recommendations</span></h1>
+        <p id="pageSubheading">Movies matched based on your chosen filter preferences.</p>
+        {% endif %}
+    </header>
+
+    <main class="container">
+
+        <!-- ACTIVE FILTERS SUMMARY (Hidden if pure title search) -->
+        {% if not query %}
+        <div class="summary-bar" id="activeFiltersSummary">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 12px; font-weight: 700; color: var(--text-muted);">ACTIVE FILTERS:</span>
+                {% if genre %}<span class="summary-pill">🎭 {{ genre }}</span>{% endif %}
+                {% if language %}<span class="summary-pill">🌐 {{ language }}</span>{% endif %}
+                {% if mood %}<span class="summary-pill">🍿 {{ mood }}</span>{% endif %}
+                <span class="summary-pill">⭐ {{ min_rating }}+ Rating</span>
+                <span class="summary-pill">📅 {{ min_year }} - {{ max_year }}</span>
+            </div>
+            <a href="/" style="font-size: 13px; color: var(--primary); font-weight: 600;">Edit Filters</a>
+        </div>
+        {% endif %}
+
+        <!-- LIVE SEARCH RESULTS CONTAINER (Shown when searching) -->
+        <div id="liveSearchResultsPanel" style="display: none; margin-bottom: 30px;">
+            <div style="font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--text-muted);" id="liveSearchHeader">
+                Searching...
+            </div>
+            <div class="movie-grid" id="liveSearchGrid"></div>
+        </div>
+
+        <!-- DEFAULT RECOMMENDATIONS CONTAINER (Hidden when active live search is performed) -->
+        <div id="defaultRecommendationsPanel">
+            
+            {% if recommendations %}
+            <div class="movie-grid" id="movieGridContainer">
+                {% for movie in recommendations %}
+                <article class="movie-card" data-movie-id="{{ movie.id }}">
+                    
+                    <div class="card-header-poster">
+                        {% if movie.poster_url %}
+                        <img src="{{ movie.poster_url }}" alt="{{ movie.title }}" class="card-poster-img" loading="lazy" onerror="this.style.display='none';">
+                        {% endif %}
+                        <div class="card-score-badge">{{ movie.score }}% Match</div>
+                        <button 
+                            class="bookmark-icon-btn" 
+                            title="Save to Watchlist" 
+                            data-id="{{ movie.id }}" 
+                            data-title="{{ movie.title }}" 
+                            data-year="{{ movie.year }}" 
+                            data-genre="{{ movie.genre }}" 
+                            data-rating="{{ movie.rating }}" 
+                            onclick="handleBookmarkClick(event, this)"
+                        >
+                            ♥
+                        </button>
+                    </div>
+
+                    <div class="card-content">
+                        <h3 class="movie-title">{{ movie.title }}</h3>
+                        
+                        <div class="movie-sub-info">
+                            {{ movie.year }} • {{ movie.language }} • ⭐ {{ movie.rating }}
+                        </div>
+
+                        <div class="tag-list">
+                            <span class="subtle-tag">🎭 {{ movie.genre }}</span>
+                            {% if movie.mood %}
+                            <span class="subtle-tag">🍿 {{ movie.mood }}</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="match-bar-wrap">
+                            <div class="match-bar-fill" data-score="{{ movie.score }}"></div>
+                        </div>
+
+                        <button class="btn-card-action" data-movie-id="{{ movie.id }}" onclick="openMovieDetailModal(this.dataset.movieId)">
+                            View Details
+                        </button>
+                    </div>
+
+                </article>
+                {% endfor %}
+            </div>
+
+            {% else %}
+            <div class="clean-card" style="text-align: center; padding: 50px 20px;">
+                <h3 style="margin-bottom: 10px;">No Movies Found</h3>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">Try adjusting your search term or filter criteria.</p>
+                <a href="/" class="btn-search-submit" style="display: inline-block; text-decoration: none;">Change Search Criteria</a>
+            </div>
+            {% endif %}
+
+        </div>
+
+    </main>
+
+    <!-- MOVIE DETAIL MODAL -->
+    <div class="modal-backdrop" id="movieDetailModal">
+        <div class="modal-card">
+            <button class="modal-close" onclick="closeMovieDetailModal()">&times;</button>
+            <h2 id="modalTitle" style="margin-bottom: 12px;">Movie Title</h2>
+            <div id="modalMetaBar" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;"></div>
+            
+            <div style="margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Overview</div>
+                <p id="modalDesc" style="font-size: 14px; margin-top: 4px; color: var(--text-main);"></p>
+            </div>
+
+            <div>
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Cast & Director</div>
+                <p id="modalCastDir" style="font-size: 14px; margin-top: 4px; color: var(--text-muted);"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- WATCHLIST MODAL -->
+    <div class="modal-backdrop" id="watchlistModal">
+        <div class="modal-card">
+            <button class="modal-close" onclick="closeWatchlistModal()">&times;</button>
+            <h2 style="margin-bottom: 16px;">🔖 My Watchlist</h2>
+            <div id="watchlistContent"></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        /* TOP NAV SEARCH BAR - HIDES RECOMMENDED MOVIES WHEN TYPING */
+        const topSearch = document.getElementById("topNavSearchInput");
+        const defaultPanel = document.getElementById("defaultRecommendationsPanel");
+        const livePanel = document.getElementById("liveSearchResultsPanel");
+        const liveGrid = document.getElementById("liveSearchGrid");
+        const liveHeader = document.getElementById("liveSearchHeader");
+        const filterSummary = document.getElementById("activeFiltersSummary");
+        let searchTimer = null;
+
+        topSearch.addEventListener("input", function() {
+            const query = this.value.trim();
+
+            if (query.length === 0) {
+                // Restore recommended movies list
+                livePanel.style.display = "none";
+                defaultPanel.style.display = "block";
+                if (filterSummary) filterSummary.style.display = "flex";
+                document.getElementById("pageHeading").innerHTML = `Your <span>Movie Recommendations</span>`;
+                document.getElementById("pageSubheading").textContent = `Movies matched based on your chosen filter preferences.`;
+                return;
+            }
+
+            // HIDE RECOMMENDED MOVIES PANEL WHEN SEARCHING
+            defaultPanel.style.display = "none";
+            if (filterSummary) filterSummary.style.display = "none";
+            livePanel.style.display = "block";
+            liveHeader.textContent = `Searching for "${query}"...`;
+            document.getElementById("pageHeading").innerHTML = `Search Results for <span>"${escapeHtml(query)}"</span>`;
+            document.getElementById("pageSubheading").textContent = `Showing direct search matches.`;
+
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch("/search?q=" + encodeURIComponent(query));
+                    const movies = await res.json();
+                    liveGrid.innerHTML = "";
+
+                    if (movies.length === 0) {
+                        liveHeader.textContent = `No movies found matching "${query}"`;
+                        liveGrid.innerHTML = `<p style="color: var(--text-muted); grid-column: 1/-1;">Try searching with a different movie title or keyword.</p>`;
+                    } else {
+                        liveHeader.textContent = `Found ${movies.length} matching movies for "${query}":`;
+                        movies.forEach(m => {
+                            const card = document.createElement("article");
+                            card.className = "movie-card";
+                            card.innerHTML = `
+                                <div class="card-header-poster">
+                                    <div class="card-score-badge">⭐ ${m.rating}</div>
+                                </div>
+                                <div class="card-content">
+                                    <h3 class="movie-title">${escapeHtml(m.title)}</h3>
+                                    <div class="movie-sub-info">${m.year} • ${escapeHtml(m.language)}</div>
+                                    <div class="tag-list">
+                                        <span class="subtle-tag">🎭 ${escapeHtml(m.genre)}</span>
+                                        ${m.mood ? `<span class="subtle-tag">🍿 ${escapeHtml(m.mood)}</span>` : ''}
+                                    </div>
+                                    <button class="btn-card-action" onclick="openMovieDetailModal('${m.id}')">View Details</button>
+                                </div>
+                            `;
+                            liveGrid.appendChild(card);
+                        });
+                    }
+                } catch(e) {
+                    console.error("Search error:", e);
+                }
+            }, 200);
+        });
+
+        /* THEME */
+        function initTheme() {
+            const savedTheme = localStorage.getItem("moviematch_theme");
+            if (savedTheme === "dark") {
+                document.body.classList.add("dark");
+                document.getElementById("themeButton").textContent = "☀️ Theme";
+            }
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle("dark");
+            const isDark = document.body.classList.contains("dark");
+            localStorage.setItem("moviematch_theme", isDark ? "dark" : "light");
+            document.getElementById("themeButton").textContent = isDark ? "☀️ Theme" : "🌙 Theme";
+        }
+
+        /* WATCHLIST */
+        function getWatchlist() {
+            return JSON.parse(localStorage.getItem("moviematch_watchlist") || "[]");
+        }
+
+        function updateWatchlistCount() {
+            const list = getWatchlist();
+            document.getElementById("watchlistCount").textContent = list.length;
+            
+            document.querySelectorAll(".movie-card").forEach(card => {
+                const id = parseInt(card.dataset.movieId);
+                const btn = card.querySelector(".bookmark-icon-btn");
+                if (btn && id) {
+                    if (list.some(m => m.id === id)) {
+                        btn.classList.add("saved");
+                    } else {
+                        btn.classList.remove("saved");
+                    }
+                }
+            });
+        }
+
+        function handleBookmarkClick(event, btnElement) {
+            event.stopPropagation();
+            const movie = {
+                id: parseInt(btnElement.dataset.id),
+                title: btnElement.dataset.title,
+                year: parseInt(btnElement.dataset.year),
+                genre: btnElement.dataset.genre,
+                rating: parseFloat(btnElement.dataset.rating)
+            };
+            let list = getWatchlist();
+            const existsIndex = list.findIndex(m => m.id === movie.id);
+            if (existsIndex > -1) {
+                list.splice(existsIndex, 1);
+            } else {
+                list.push(movie);
+            }
+            localStorage.setItem("moviematch_watchlist", JSON.stringify(list));
+            updateWatchlistCount();
+        }
+
+        function openWatchlistModal() {
+            const content = document.getElementById("watchlistContent");
+            const list = getWatchlist();
+            content.innerHTML = "";
+            if (list.length === 0) {
+                content.innerHTML = "<p style='color: var(--text-muted); text-align: center; padding: 20px;'>Your watchlist is empty.</p>";
+            } else {
+                list.forEach(m => {
+                    content.innerHTML += `
+                        <div class="search-result-item" style="border-radius: 8px; margin-bottom: 8px;">
+                            <div style="flex: 1;">
+                                <div class="search-info-title">${escapeHtml(m.title)} (${m.year})</div>
+                                <div class="search-info-meta">🎭 ${escapeHtml(m.genre)} • ⭐ ${m.rating}</div>
+                            </div>
+                            <button class="nav-btn" style="color: #ef4444;" onclick="removeFromWatchlist(${m.id})">Remove</button>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById("watchlistModal").style.display = "flex";
+        }
+
+        function removeFromWatchlist(id) {
+            let list = getWatchlist().filter(m => m.id !== id);
+            localStorage.setItem("moviematch_watchlist", JSON.stringify(list));
+            updateWatchlistCount();
+            openWatchlistModal();
+        }
+
+        function closeWatchlistModal() {
+            document.getElementById("watchlistModal").style.display = "none";
+        }
+
+        /* MOVIE DETAIL MODAL */
+        async function openMovieDetailModal(movieId) {
+            try {
+                const res = await fetch("/api/movie/" + movieId);
+                if (!res.ok) return;
+                const m = await res.json();
+                
+                document.getElementById("modalTitle").textContent = m.title;
+                document.getElementById("modalDesc").textContent = m.description;
+                document.getElementById("modalCastDir").innerHTML = `
+                    <strong>Director:</strong> ${escapeHtml(m.director)}<br>
+                    <strong>Starring:</strong> ${escapeHtml(m.cast)}
+                `;
+                
+                document.getElementById("modalMetaBar").innerHTML = `
+                    <span class="summary-pill">📅 ${m.year}</span>
+                    <span class="summary-pill">🎭 ${escapeHtml(m.genre)}</span>
+                    <span class="summary-pill">🌐 ${escapeHtml(m.language)}</span>
+                    <span class="summary-pill">⭐ ${m.rating}</span>
+                `;
+
+                document.getElementById("movieDetailModal").style.display = "flex";
+            } catch(e) {
+                console.error("Error loading detail:", e);
+            }
+        }
+
+        function closeMovieDetailModal() {
+            document.getElementById("movieDetailModal").style.display = "none";
+        }
+
+        function initMatchBars() {
+            document.querySelectorAll(".match-bar-fill").forEach(el => {
+                const score = el.dataset.score || "0";
+                el.style.width = score + "%";
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initTheme();
+            initMatchBars();
+            updateWatchlistCount();
+        });
+    </script>
+</body>
+</html>

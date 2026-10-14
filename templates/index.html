@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MovieMatch | Movie Recommendation System</title>
+    <!-- Direct local file path fallback & Flask static route -->
+    <link rel="stylesheet" href="../static/style.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+            --bg-main: #f1f5f9;
+            --bg-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --border-color: #cbd5e1;
+            --accent-bg: #e0e7ff;
+            --accent-text: #3730a3;
+        }
+        body.dark {
+            --primary: #6366f1;
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            --bg-main: #0b0f19;
+            --bg-card: #131b2e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #24304f;
+            --accent-bg: rgba(99, 102, 241, 0.2);
+            --accent-text: #c7d2fe;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="logo" onclick="window.location.href='/'">
+            <span class="logo-icon">🎬</span> MovieMatch
+        </div>
+
+        <div class="nav-controls">
+            <div class="summary-pill" style="font-size: 13px; font-weight: 600;">
+                ⚡ {{ total_movies }} Movies
+            </div>
+
+            <button class="nav-btn" onclick="openWatchlistModal()">
+                <span>🔖</span> Watchlist
+                <span class="watchlist-count-badge" id="watchlistCount">0</span>
+            </button>
+
+            <button class="nav-btn" id="themeButton" onclick="toggleTheme()" aria-label="Toggle Theme">
+                🌙 Theme
+            </button>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION (Preserved Original Alignment) -->
+    <header class="hero">
+        <div class="summary-pill" style="margin-bottom: 16px; font-size: 13px; border: 1px solid var(--border-color);">
+            🎬 Intelligent Recommendation Engine
+        </div>
+        <h1>Find Your Next <span>Favorite Movie</span></h1>
+        <p>A high-performance movie recommendation platform analyzing 1,250+ global films.</p>
+
+        <!-- STATS COUNTER GRID -->
+        <div style="display: flex; justify-content: center; gap: 24px; margin-top: 25px; flex-wrap: wrap;">
+            <div class="clean-card" style="padding: 12px 24px; text-align: center; min-width: 120px; margin-bottom: 0;">
+                <div style="font-size: 22px; font-weight: 800; color: var(--primary);">{{ total_movies }}</div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                    Total Movies</div>
+            </div>
+            <div class="clean-card" style="padding: 12px 24px; text-align: center; min-width: 120px; margin-bottom: 0;">
+                <div style="font-size: 22px; font-weight: 800; color: var(--primary);">{{ genres|length }}</div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                    Genres</div>
+            </div>
+            <div class="clean-card" style="padding: 12px 24px; text-align: center; min-width: 120px; margin-bottom: 0;">
+                <div style="font-size: 22px; font-weight: 800; color: var(--primary);">{{ languages|length }}</div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                    Languages</div>
+            </div>
+            <div class="clean-card" style="padding: 12px 24px; text-align: center; min-width: 120px; margin-bottom: 0;">
+                <div style="font-size: 22px; font-weight: 800; color: var(--primary);">⭐ {{ avg_rating }}</div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Avg
+                    Rating</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- 1. SEARCH SECTION (Organized & Clean) -->
+        <section class="clean-card">
+            <div class="card-title">
+                🔎 Search for a Movie
+            </div>
+
+            <form action="/recommendations" method="GET" class="search-bar-form">
+                <div class="search-wrapper" style="flex: 1;">
+                    <div class="search-input-group">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" name="query" id="movieSearchInput" class="search-input"
+                            placeholder="Start typing a movie title, director, or actor..." autocomplete="off">
+                    </div>
+                    <div id="searchResultsDropdown" class="search-dropdown"></div>
+                </div>
+                <button type="submit" class="btn-search-submit">Search</button>
+            </form>
+        </section>
+
+        <!-- OR DIVIDER -->
+        <div
+            style="display: flex; align-items: center; gap: 16px; margin: 30px 0; color: var(--text-muted); font-size: 12px; font-weight: 700;">
+            <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+            <span>OR</span>
+            <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+        </div>
+
+        <!-- 2. FILTER SECTION (Organized Preferences) -->
+        <section class="clean-card">
+            <div class="card-title">
+                🎯 Choose Your Preferences
+            </div>
+
+            <form action="/recommendations" method="POST" id="filterForm">
+
+                <!-- MOOD CHIPS -->
+                <div style="margin-bottom: 18px;">
+                    <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px;">Vibe
+                        / Mood Preference (Optional)</div>
+                    <input type="hidden" name="mood" id="selectedMood" value="">
+                    <div class="mood-chips-row">
+                        <div class="mood-badge" data-mood="Mind-Bending" onclick="toggleMoodBadge(this)">🧠 Mind-Bending
+                        </div>
+                        <div class="mood-badge" data-mood="Thrilling" onclick="toggleMoodBadge(this)">😱 Thrilling</div>
+                        <div class="mood-badge" data-mood="Heartwarming" onclick="toggleMoodBadge(this)">💖 Heartwarming
+                        </div>
+                        <div class="mood-badge" data-mood="Dark" onclick="toggleMoodBadge(this)">🦇 Dark</div>
+                        <div class="mood-badge" data-mood="Fun & Entertaining" onclick="toggleMoodBadge(this)">🍿 Action
+                            & Fun</div>
+                        <div class="mood-badge" data-mood="Epic" onclick="toggleMoodBadge(this)">⚔️ Epic</div>
+                        <div class="mood-badge" data-mood="Inspiring" onclick="toggleMoodBadge(this)">🌟 Inspiring</div>
+                    </div>
+                </div>
+
+                <!-- FILTER GRID -->
+                <div class="filter-grid">
+
+                    <div class="form-group">
+                        <label for="genre">Genre</label>
+                        <select name="genre" id="genre" class="form-control">
+                            <option value="">All Genres</option>
+                            {% for g in genres %}
+                            <option value="{{ g }}">{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="language">Language</label>
+                        <select name="language" id="language" class="form-control">
+                            <option value="">All Languages</option>
+                            {% for l in languages %}
+                            <option value="{{ l }}">{{ l }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rating">Minimum Rating (⭐ <span id="ratingVal">0.0</span>)</label>
+                        <input type="range" name="rating" id="rating" min="0" max="10" step="0.5" value="0"
+                            class="form-control" style="padding: 4px;"
+                            oninput="document.getElementById('ratingVal').textContent = parseFloat(this.value).toFixed(1)">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="min_year">From Year</label>
+                        <input type="number" name="min_year" id="min_year" class="form-control" min="1970" max="2025"
+                            value="1990">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max_year">To Year</label>
+                        <input type="number" name="max_year" id="max_year" class="form-control" min="1970" max="2025"
+                            value="2025">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sort">Sort By</label>
+                        <select name="sort" id="sort" class="form-control">
+                            <option value="score">Recommendation Score</option>
+                            <option value="rating">Highest Rating</option>
+                            <option value="year">Newest Year</option>
+                            <option value="title">Title (A-Z)</option>
+                        </select>
+                    </div>
+
+                </div>
+
+                <button type="submit" class="btn-primary">
+                    🚀 Get Recommendations
+                </button>
+
+            </form>
+        </section>
+
+        <!-- 3. DATASET STATS DASHBOARD -->
+        <section class="clean-card" style="margin-top: 30px;">
+            <div class="card-title">
+                📊 Dataset Insights & Distribution
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                <div
+                    style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px;">
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">🎬 Top
+                        Genres</div>
+                    <div id="genreStatsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                </div>
+
+                <div
+                    style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px;">
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">🏆
+                        All-Time Top Rated</div>
+                    <div id="topMoviesList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. FEATURES SECTION (Preserved Original Layout) -->
+        <section
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 35px; margin-bottom: 40px;">
+            <div class="clean-card" style="text-align: center; margin-bottom: 0; padding: 28px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">🧠</div>
+                <h3 style="font-size: 16px; margin-bottom: 6px;">Smart Matching</h3>
+                <p style="font-size: 13px; color: var(--text-muted);">Rule-based scoring matches movies with your
+                    selected preferences.</p>
+            </div>
+
+            <div class="clean-card" style="text-align: center; margin-bottom: 0; padding: 28px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">⚡</div>
+                <h3 style="font-size: 16px; margin-bottom: 6px;">Fast Results</h3>
+                <p style="font-size: 13px; color: var(--text-muted);">Quickly filter and rank movies from the available
+                    dataset.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MOVIE DETAIL MODAL -->
+    <div class="modal-backdrop" id="movieDetailModal">
+        <div class="modal-card">
+            <button class="modal-close" onclick="closeMovieDetailModal()">&times;</button>
+            <h2 id="modalTitle" style="margin-bottom: 12px;">Movie Title</h2>
+            <div id="modalMetaBar" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;"></div>
+
+            <div style="margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+                    Overview</div>
+                <p id="modalDesc" style="font-size: 14px; margin-top: 4px; color: var(--text-main);"></p>
+            </div>
+
+            <div>
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+                    Cast & Director</div>
+                <p id="modalCastDir" style="font-size: 14px; margin-top: 4px; color: var(--text-muted);"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- WATCHLIST MODAL -->
+    <div class="modal-backdrop" id="watchlistModal">
+        <div class="modal-card">
+            <button class="modal-close" onclick="closeWatchlistModal()">&times;</button>
+            <h2 style="margin-bottom: 16px;">🔖 My Watchlist</h2>
+            <div id="watchlistContent"></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        /* MOOD BADGES */
+        function toggleMoodBadge(el) {
+            const isAlready = el.classList.contains("active");
+            document.querySelectorAll(".mood-badge").forEach(b => b.classList.remove("active"));
+            const hidden = document.getElementById("selectedMood");
+            if (!isAlready) {
+                el.classList.add("active");
+                hidden.value = el.dataset.mood;
+            } else {
+                hidden.value = "";
+            }
+        }
+
+        /* AUTOCOMPLETE SEARCH */
+        const searchInput = document.getElementById("movieSearchInput");
+        const searchDropdown = document.getElementById("searchResultsDropdown");
+        let timer = null;
+
+        searchInput.addEventListener("input", function () {
+            const query = this.value.trim();
+            if (!query) {
+                searchDropdown.style.display = "none";
+                return;
+            }
+
+            clearTimeout(timer);
+            timer = setTimeout(async () => {
+                try {
+                    const res = await fetch("/search?q=" + encodeURIComponent(query));
+                    const movies = await res.json();
+                    searchDropdown.innerHTML = "";
+                    if (movies.length === 0) {
+                        searchDropdown.innerHTML = `
+                            <div class="search-result-item">
+                                <div class="search-info-title">No matching movies found</div>
+                            </div>
+                        `;
+                    } else {
+                        movies.forEach(m => {
+                            const item = document.createElement("div");
+                            item.className = "search-result-item";
+                            item.innerHTML = `
+                                <div>
+                                    <div class="search-info-title">${escapeHtml(m.title)} (${m.year})</div>
+                                    <div class="search-info-meta">🎭 ${escapeHtml(m.genre)} • 🌐 ${escapeHtml(m.language)} • ⭐ ${m.rating}</div>
+                                </div>
+                            `;
+                            item.onclick = () => {
+                                window.location.href = "/recommendations?query=" + encodeURIComponent(m.title);
+                            };
+                            searchDropdown.appendChild(item);
+                        });
+                    }
+                    searchDropdown.style.display = "block";
+                } catch (e) {
+                    console.error("Search error", e);
+                }
+            }, 200);
+        });
+
+        document.addEventListener("click", (e) => {
+            if (!e.target.closest(".search-wrapper")) {
+                searchDropdown.style.display = "none";
+            }
+        });
+
+        /* THEME */
+        function initTheme() {
+            const savedTheme = localStorage.getItem("moviematch_theme");
+            if (savedTheme === "dark") {
+                document.body.classList.add("dark");
+                document.getElementById("themeButton").textContent = "☀️ Theme";
+            }
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle("dark");
+            const isDark = document.body.classList.contains("dark");
+            localStorage.setItem("moviematch_theme", isDark ? "dark" : "light");
+            document.getElementById("themeButton").textContent = isDark ? "☀️ Theme" : "🌙 Theme";
+        }
+
+        /* WATCHLIST */
+        function getWatchlist() {
+            return JSON.parse(localStorage.getItem("moviematch_watchlist") || "[]");
+        }
+
+        function updateWatchlistCount() {
+            document.getElementById("watchlistCount").textContent = getWatchlist().length;
+        }
+
+        function openWatchlistModal() {
+            const content = document.getElementById("watchlistContent");
+            const list = getWatchlist();
+            content.innerHTML = "";
+            if (list.length === 0) {
+                content.innerHTML = "<p style='color: var(--text-muted); text-align: center; padding: 20px;'>Your watchlist is empty.</p>";
+            } else {
+                list.forEach(m => {
+                    content.innerHTML += `
+                        <div class="search-result-item" style="border-radius: 8px; margin-bottom: 8px;">
+                            <div style="flex: 1;">
+                                <div class="search-info-title">${escapeHtml(m.title)} (${m.year})</div>
+                                <div class="search-info-meta">🎭 ${escapeHtml(m.genre)} • ⭐ ${m.rating}</div>
+                            </div>
+                            <button class="nav-btn" style="color: #ef4444;" onclick="removeFromWatchlist(${m.id})">Remove</button>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById("watchlistModal").style.display = "flex";
+        }
+
+        function removeFromWatchlist(id) {
+            let list = getWatchlist().filter(m => m.id !== id);
+            localStorage.setItem("moviematch_watchlist", JSON.stringify(list));
+            updateWatchlistCount();
+            openWatchlistModal();
+        }
+
+        function closeWatchlistModal() {
+            document.getElementById("watchlistModal").style.display = "none";
+        }
+
+        /* DATASET STATS LOAD */
+        async function loadDatasetStats() {
+            try {
+                const res = await fetch("/api/stats");
+                const data = await res.json();
+
+                const genreContainer = document.getElementById("genreStatsList");
+                genreContainer.innerHTML = "";
+                const sortedGenres = Object.entries(data.genres).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                sortedGenres.forEach(([genre, count]) => {
+                    genreContainer.innerHTML += `
+                        <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                            <span style="font-weight: 600;">${escapeHtml(genre)}</span>
+                            <span style="color: var(--text-muted); font-weight: 700;">${count} movies</span>
+                        </div>
+                    `;
+                });
+
+                const topContainer = document.getElementById("topMoviesList");
+                topContainer.innerHTML = "";
+                data.top_rated.forEach(m => {
+                    topContainer.innerHTML += `
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; cursor: pointer;" onclick="openMovieDetailModal(${m.id})">
+                            <span style="font-weight: 600;">${escapeHtml(m.title)}</span>
+                            <span style="color: var(--primary); font-weight: 700;">⭐ ${m.rating}</span>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                console.error("Stats load error:", e);
+            }
+        }
+
+        function closeMovieDetailModal() {
+            document.getElementById("movieDetailModal").style.display = "none";
+        }
+
+        async function openMovieDetailModal(movieId) {
+            try {
+                const res = await fetch("/api/movie/" + movieId);
+                if (!res.ok) return;
+                const m = await res.json();
+                document.getElementById("modalTitle").textContent = m.title;
+                document.getElementById("modalDesc").textContent = m.description;
+                document.getElementById("modalCastDir").innerHTML = `
+                    <strong>Director:</strong> ${escapeHtml(m.director)}<br>
+                    <strong>Starring:</strong> ${escapeHtml(m.cast)}
+                `;
+                document.getElementById("modalMetaBar").innerHTML = `
+                    <span class="summary-pill">📅 ${m.year}</span>
+                    <span class="summary-pill">🎭 ${escapeHtml(m.genre)}</span>
+                    <span class="summary-pill">🌐 ${escapeHtml(m.language)}</span>
+                    <span class="summary-pill">⭐ ${m.rating}</span>
+                `;
+                document.getElementById("movieDetailModal").style.display = "flex";
+            } catch (e) {
+                console.error("Error loading detail:", e);
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initTheme();
+            updateWatchlistCount();
+            loadDatasetStats();
+        });
+    </script>
+</body>
+
+</html>
